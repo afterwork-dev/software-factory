@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory board</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc;
+    --accent: #3d5afe; --pass: #1e8e3e; --fail: #c62828; --wait: #b26a00; --pending: #9a9aa0;
+    --chip-bg: #f0efeb; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa3; --line: #2c2c31;
+      --accent: #8c9eff; --pass: #5bd27a; --fail: #ff6b6b; --wait: #ffb74d; --pending: #6f6f78;
+      --chip-bg: #26262b; --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line);
+           background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .spacer { flex: 1; }
+  header select { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  #updated { color: var(--muted); font-size: 12px; }
+  main { padding: 16px 20px 40px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 18px 0 8px; font-weight: 600; }
+  .attention .card { border-left: 3px solid var(--wait); }
+  .board { display: grid; grid-template-columns: repeat(7, minmax(170px, 1fr)); gap: 10px; overflow-x: auto; }
+  .col { background: color-mix(in srgb, var(--panel) 55%, var(--bg)); border: 1px solid var(--line); border-radius: 10px;
+         padding: 8px; min-height: 120px; }
+  .col h3 { font-size: 12px; margin: 2px 4px 8px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+  .cards { display: flex; flex-direction: column; gap: 8px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; box-shadow: var(--shadow);
+          cursor: pointer; text-align: left; color: inherit; font: inherit; width: 100%; }
+  .card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+  .card .id { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .card .title { font-weight: 560; margin: 2px 0 6px; overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--chip-bg); color: var(--muted); white-space: nowrap; }
+  .chip.PASS, .chip.APPROVE, .chip.delivered { color: var(--pass); }
+  .chip.FAIL, .chip.CHANGES, .chip.ESCALATE, .chip.rejected { color: var(--fail); }
+  .chip.needs-human, .chip.needs-info { color: var(--wait); }
+  .chip.pending { color: var(--pending); }
+  .reason { font-size: 12px; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .empty { color: var(--muted); font-size: 12px; padding: 4px; }
+  dialog { border: none; padding: 0; width: min(1100px, 96vw); height: min(88vh, 900px); border-radius: 12px;
+           background: var(--panel); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .drawer { display: grid; grid-template-columns: 330px 1fr; height: 100%; }
+  .drawer aside { border-right: 1px solid var(--line); padding: 14px; overflow-y: auto; }
+  .drawer section { padding: 14px 18px; overflow: auto; }
+  .drawer h4 { margin: 0 0 4px; font-size: 15px; }
+  .drawer .close { float: right; background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 6px; cursor: pointer; }
+  .kv { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  .kv b { color: var(--ink); font-weight: 560; }
+  .tablewrap { overflow-x: auto; margin: 8px 0 12px; }
+  table.rounds { border-collapse: collapse; font-size: 12px; width: 100%; }
+  table.rounds td, table.rounds th { border-bottom: 1px solid var(--line); padding: 3px 4px; text-align: left; }
+  .files { list-style: none; padding: 0; margin: 6px 0; font-size: 12px; }
+  .files button { background: none; border: none; color: var(--accent); cursor: pointer; padding: 2px 0; font: inherit;
+                  text-align: left; overflow-wrap: anywhere; }
+  .files button.active { font-weight: 650; }
+  .doc { max-width: 860px; }
+  .doc pre { background: var(--chip-bg); padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+  .doc code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .doc h1 { font-size: 20px; } .doc h2 { font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+  .doc h3 { font-size: 14px; }
+  .doc .verdict { font-weight: 700; }
+  @media (max-width: 760px) {
+    .board { grid-template-columns: repeat(7, 78vw); }
+    .drawer { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .drawer aside { border-right: none; border-bottom: 1px solid var(--line); max-height: 40vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Factory board</h1>
+  <select id="project" aria-label="Project"><option value="">All projects</option></select>
+  <span class="spacer"></span>
+  <span id="updated">loading…</span>
+</header>
+<main>
+  <div id="attention" class="attention"></div>
+  <h2>In progress</h2>
+  <div id="board" class="board"></div>
+  <h2>Finished</h2>
+  <div id="finished" class="row"></div>
+</main>
+<dialog id="detail"></dialog>
+<script>
+const STAGES = [["intake", "Intake"], ["spec", "Spec"], ["build", "Build"], ["gate", "Gate"],
+                ["review", "Review"], ["approve", "Approve"], ["delivering", "Deliver"]];
+const FINISHED = ["delivered", "rejected", "abandoned"];
+const PARKED = ["needs-human", "needs-info"];
+let state = { jobs: [], projects: [] };
+let open = null;  // {project, id, path}
+let lastAside = "";
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const chip = (text, cls = "") => `<span class="chip ${esc(cls)}">${esc(text)}</span>`;
+
+function chips(job) {
+  const out = [];
+  if (job.intake && job.intake.risk) out.push(chip(`risk ${job.intake.risk}`));
+  if (job.round) out.push(chip(`round ${job.round}/${job.round_limit}`));
+  const r = job.rounds && job.rounds[String(job.round)];
+  if (r && r.gate) out.push(chip(`gate ${r.gate}`, r.gate));
+  for (const [lens, verdict] of Object.entries(job.reviews || {})) out.push(chip(`${lens} ${verdict}`, verdict));
+  if (job.agents && job.agents.builder) out.push(chip(`builder ${job.agents.builder}`));
+  return out.join("");
+}
+
+function card(job) {
+  const reason = job.needs_human && job.needs_human.reason;
+  return `<button class="card" data-project="${esc(job.project)}" data-id="${esc(job.id)}">
+    <div class="id">${esc(job.project)} · ${esc(job.id)}</div>
+    <div class="title">${esc(job.title)}</div>
+    <div class="meta">${PARKED.includes(job.stage) || FINISHED.includes(job.stage)
+        ? chip(job.stage, job.stage) : ""}${chips(job)}</div>
+    ${reason && job.stage === "needs-human" ? `<div class="reason">${esc(reason.slice(0, 220))}</div>` : ""}
+  </button>`;
+}
+
+function render() {
+  const filter = document.getElementById("project").value;
+  const jobs = state.jobs.filter(j => !filter || j.project === filter)
+                         .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+  const waiting = jobs.filter(j => PARKED.includes(j.stage));
+  document.getElementById("attention").innerHTML = waiting.length
+    ? `<h2>Waiting for you</h2><div class="row">${waiting.map(card).join("")}</div>` : "";
+  document.getElementById("board").innerHTML = STAGES.map(([key, label]) => {
+    const here = jobs.filter(j => j.stage === key);
+    return `<div class="col"><h3><span>${label}</span><span>${here.length || ""}</span></h3>
+      <div class="cards">${here.map(card).join("") || '<div class="empty">—</div>'}</div></div>`;
+  }).join("");
+  const done = jobs.filter(j => FINISHED.includes(j.stage)).slice(0, 24);
+  document.getElementById("finished").innerHTML = done.map(card).join("") || '<div class="empty">Nothing finished yet.</div>';
+  const select = document.getElementById("project");
+  const known = Array.from(select.options).map(o => o.value);
+  for (const p of state.projects) if (!known.includes(p)) select.add(new Option(p, p));
+  if (open) renderDetail(false);
+}
+
+function markdown(src) {
+  const lines = src.split("\n"), out = [];
+  let inCode = false, list = null;
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const line of lines) {
+    if (/^```/.test(line)) { closeList(); out.push(inCode ? "</code></pre>" : "<pre><code>"); inCode = !inCode; continue; }
+    if (inCode) { out.push(esc(line) + "\n"); continue; }
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { closeList(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) { if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if (/^(VERDICT|GATE|DECISION|STATUS):|^(APPROVE|ESCALATE)$/.test(line)) { closeList(); out.push(`<p class="verdict">${inline(line)}</p>`); }
+    else if (!line.trim()) { closeList(); }
+    else { closeList(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  closeList();
+  if (inCode) out.push("</code></pre>");
+  return out.join("\n");
+}
+
+function pickDefaultFile(job) {
+  const prefs = ["decision.md", "build.md", "spec.md", "intake.md", "request.md"];
+  for (const f of prefs) if (job.files.includes(f)) return f;
+  return job.files[0];
+}
+
+async function renderDetail(fetchFile = true) {
+  const job = state.jobs.find(j => j.project === open.project && j.id === open.id);
+  const dlg = document.getElementById("detail");
+  if (!job) { dlg.close(); open = null; return; }
+  if (!open.path) open.path = pickDefaultFile(job);
+  const rounds = Object.entries(job.rounds || {});
+  const lenses = Object.keys((job.agents && job.agents.lenses) || {});
+  const roundsTable = rounds.length ? `<div class="tablewrap"><table class="rounds"><tr><th>Round</th><th>Gate</th>${lenses.map(l => `<th>${esc(l)}</th>`).join("")}</tr>
+      ${rounds.map(([n, r]) => `<tr><td>${esc(n)}</td><td>${chip(r.gate || "–", r.gate || "pending")}</td>
+      ${lenses.map(l => `<td>${chip(r.reviews[l] || "–", r.reviews[l] || "pending")}</td>`).join("")}</tr>`).join("")}</table></div>` : "";
+  const aside = `<button class="close" aria-label="Close">✕</button>
+    <h4>${esc(job.title)}</h4>
+    <div class="kv">${esc(job.project)} · ${esc(job.id)}</div>
+    <div class="meta">${chip(job.stage, job.stage)}${chips(job)}</div>
+    <div class="kv">branch <b>${esc(job.branch)}</b><br>base <b>${esc(job.base_branch)}</b>
+      ${job.delivery ? `<br>delivered with <b>${esc(job.delivery.method)}</b> at <b>${esc((job.delivery.commit || "").slice(0, 12))}</b>` : ""}</div>
+    ${job.delivery && job.delivery.next_steps ? `<div class="reason">${esc(job.delivery.next_steps)}</div>` : ""}
+    ${job.needs_human && job.stage === "needs-human" ? `<div class="reason">${esc(job.needs_human.reason)}</div>` : ""}
+    ${roundsTable}
+    <ul class="files">${job.files.map(f => `<li><button data-path="${esc(f)}" class="${f === open.path ? "active" : ""}">${esc(f)}</button></li>`).join("")}</ul>`;
+  if (!dlg.open) dlg.showModal();
+  if (!dlg.querySelector(".drawer")) {
+    dlg.innerHTML = `<div class="drawer"><aside></aside><section><div class="doc">loading…</div></section></div>`;
+  }
+  if (aside !== lastAside) {  // only touch the DOM when the job changed; the document pane keeps its scroll
+    lastAside = aside;
+    dlg.querySelector("aside").innerHTML = aside;
+    dlg.querySelector(".close").onclick = () => dlg.close();
+    dlg.querySelectorAll(".files button").forEach(b => b.onclick = () => { open.path = b.dataset.path; renderDetail(true); });
+  }
+  if (fetchFile && open.path) {
+    const q = new URLSearchParams({ project: job.project, job: job.id, path: open.path });
+    const res = await fetch(`/api/file?${q}`);
+    const text = res.ok ? await res.text() : "(not found)";
+    const doc = dlg.querySelector(".doc");
+    if (doc) doc.innerHTML = /\.(md)$/.test(open.path) ? markdown(text) : `<pre><code>${esc(text)}</code></pre>`;
+  }
+}
+
+document.addEventListener("click", e => {
+  const c = e.target.closest(".card");
+  if (!c) return;
+  open = { project: c.dataset.project, id: c.dataset.id, path: null };
+  renderDetail(true);
+});
+document.getElementById("detail").addEventListener("close", e => { open = null; lastAside = ""; e.target.innerHTML = ""; });
+document.getElementById("project").addEventListener("change", render);
+
+async function poll() {
+  try {
+    const res = await fetch("/api/jobs");
+    state = await res.json();
+    document.getElementById("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
+    render();
+  } catch (e) {
+    document.getElementById("updated").textContent = "can't reach the factory";
+  }
+}
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>

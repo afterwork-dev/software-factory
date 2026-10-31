@@ -1,0 +1,35 @@
+{
+  "_readme": "Engine defaults. A profile's config.json overrides any key here; objects merge key by key, and null removes a key (e.g. a surface).",
+  "base_branch": "main",
+  "delivery": { "method": "handoff" },
+  "branch_prefix": "factory/",
+  "max_rounds": 3,
+  "protected_paths": [],
+  "spec_may_unlock_protected": true,
+  "ports": { "base": 5300, "step": 1 },
+  "commands": {},
+  "browser": "",
+  "worktree_root": "",
+  "setup_timeout_s": 1200,
+  "checks_timeout_s": 1200,
+  "models": {
+    "intake": "opus",
+    "spec-writer": "opus",
+    "approver": "opus"
+  },
+  "routing": {
+    "low": { "builder": "sonnet", "lenses": { "code": "haiku" } },
+    "medium": { "builder": "sonnet", "lenses": { "code": "sonnet" } },
+    "high": { "builder": "opus", "lenses": { "code": "sonnet", "security": "opus" } }
+  },
+  "surfaces": {
+    "ui": {
+      "about": "changes something people see or interact with: pages, components, styles, copy, navigation",
+      "lenses": { "ux": "sonnet", "ui": "sonnet" }
+    },
+    "security": {
+      "about": "touches authentication, permissions, user input handling, secrets, personal data, or anything reachable without signing in",
+      "lenses": { "security": "opus" }
+    }
+  }
+}

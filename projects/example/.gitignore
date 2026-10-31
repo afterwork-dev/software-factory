@@ -1,0 +1,8 @@
+# Runtime state. Keeps it out of this profile's own repo too, if you version
+# your profiles separately (see README.md).
+jobs/
+worktrees/
+logs/
+.lock
+.env
+.env.*

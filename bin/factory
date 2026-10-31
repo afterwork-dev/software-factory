@@ -1,0 +1,5 @@
+#!/bin/sh
+# Entry point: run from anywhere, e.g. `~/software-factory/bin/factory run "Add dark mode"`
+# from inside a project, or `bin/factory run --project myapp --next` from this folder.
+here=$(cd "$(dirname "$0")" && pwd -P)
+exec python3 "$here/../engine/bin/factory" "$@"

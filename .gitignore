@@ -1,0 +1,25 @@
+# Real project profiles are personal: repo paths, remotes, notes about your
+# code. Only the template is shared. To version your own profiles, see
+# "Keeping your profiles in git" in README.md.
+/projects/*
+!/projects/example/
+
+# Job state, worktrees, logs and briefs, wherever they end up
+jobs/
+worktrees/
+logs/
+briefs/
+*.log
+.lock
+
+# Secrets and local overrides
+.env
+.env.*
+*.local.json
+secrets/
+.claude/settings.local.json
+
+# Python and OS clutter
+__pycache__/
+*.pyc
+.DS_Store

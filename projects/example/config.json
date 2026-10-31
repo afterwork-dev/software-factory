@@ -1,0 +1,41 @@
+{
+  "_readme": "Template profile. `bin/factory add-project <name> --repo <path>` copies this folder to projects/<name>/ and fills in repo, base_branch and ports. Keys starting with _ are comments. Any key from engine/defaults.json (routing, surfaces, models, max_rounds, timeouts) can be overridden here.",
+  "template": true,
+
+  "_repo": "path: the project's git checkout (absolute). remote: its origin URL; `bin/factory run` run inside that repo finds this profile by it.",
+  "repo": {
+    "path": "/absolute/path/to/your/project",
+    "remote": "git@github.com:your-org/your-project.git"
+  },
+
+  "_base_branch": "Jobs branch from it, and reviews and the gate compare against it.",
+  "base_branch": "main",
+
+  "_delivery": "What happens to an approved job. handoff (default): it ends as an approved branch in your repo; you push it and open a pull request, the project's usual way. next_steps, if set, replaces the suggested commands ({branch}, {base}, {repo}, {job} are filled in). local-merge: merge into base_branch locally with no person looking, only where that is allowed; strategy is merge, squash or rebase. Nothing is ever pushed.",
+  "delivery": {
+    "method": "handoff",
+    "next_steps": ""
+  },
+
+  "_protected_paths": "The gate fails a branch that modifies, renames or deletes an existing file matching these. Adding files is fine. fnmatch patterns where * also matches /; a trailing / means a whole folder.",
+  "protected_paths": ["tests/*"],
+
+  "_spec_may_unlock_protected": "When a requested change makes an existing protected test wrong, the spec writer may list that file under `## Protected changes`; the gate then lets the builder change exactly that file, and code review checks the change. false keeps protected files untouchable, which sends such jobs to you instead.",
+  "spec_may_unlock_protected": true,
+
+  "_ports": "The builder uses base, reviewers base+1, base+2, … when they start a dev server.",
+  "ports": { "base": 5300 },
+
+  "_commands": "setup runs once in each new worktree. The others are shown to agents in their briefs; in dev, {port} stands for the agent's own port. Leave a command empty if the project has none.",
+  "commands": {
+    "setup": "",
+    "dev": "",
+    "test": "",
+    "lint": "",
+    "typecheck": "",
+    "build": ""
+  },
+
+  "_browser": "A CLI agents can use to look at pages (for example agent-browser). Empty means none.",
+  "browser": ""
+}

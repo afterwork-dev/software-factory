@@ -1,0 +1,7 @@
+{
+  "name": "factory",
+  "displayName": "Software Factory",
+  "version": "0.1.0",
+  "description": "A local software factory: intake, spec, build, gate, review and approve one feature at a time, against a project profile kept outside the project repo.",
+  "keywords": ["software-factory", "agents", "code-review", "automation"]
+}

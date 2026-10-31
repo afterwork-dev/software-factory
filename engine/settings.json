@@ -1,0 +1,17 @@
+{
+  "_readme": "Settings for factory sessions. bin/factory passes them with --settings and appends deny rules with absolute paths, so no agent can edit the engine, a profile's config, checks or notes, or a job's job.json. Your own permission mode and settings still apply on top.",
+  "permissions": {
+    "allow": [
+      "Bash(factory *)",
+      "Bash(bin/factory *)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git branch --show-current)",
+      "Bash(git rev-parse *)",
+      "Bash(git merge-tree *)"
+    ],
+    "deny": []
+  }
+}
