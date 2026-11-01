@@ -21,6 +21,7 @@ TOP_KEYS = {
     "template", "description", "repo", "base_branch", "delivery", "branch_prefix",
     "max_rounds", "protected_paths", "ports", "commands", "browser", "worktree_root",
     "setup_timeout_s", "checks_timeout_s", "models", "routing", "surfaces", "spec_may_unlock_protected",
+    "pull_base",
 }
 MODEL_ROLES = ("intake", "spec-writer", "approver")
 
@@ -261,6 +262,8 @@ def validate(profile: Profile) -> List[str]:
 
     if not isinstance(cfg.get("spec_may_unlock_protected"), bool):
         err("spec_may_unlock_protected must be true or false")
+    if not isinstance(cfg.get("pull_base"), bool):
+        err("pull_base must be true or false")
     if not isinstance(cfg.get("protected_paths"), list) or \
             not all(isinstance(p, str) and p for p in cfg.get("protected_paths", [])):
         err("protected_paths must be a list of path patterns")

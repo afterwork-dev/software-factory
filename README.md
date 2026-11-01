@@ -111,7 +111,11 @@ bin/factory run --project myapp                   # resume the job in progress
 bin/factory run --project myapp -- --permission-mode acceptEdits   # args after -- go to claude
 ```
 
-`run` creates the job first: job folder, branch `factory/<job-id>`, worktree,
+`run` creates the job first. It fetches the base branch from `origin` and
+fast-forwards it when it is strictly behind; if it is ahead, diverged, offline,
+has no `origin`, or a dirty checkout blocks the fast-forward, the job starts
+from the local branch and the reason goes to the job's `events.log`. Then it
+creates the job folder, branch `factory/<job-id>`, worktree,
 and `commands.setup`. Then it starts Claude Code in this folder with the engine
 loaded as a plugin, running `/factory:run --project myapp --job <id>`. That
 session orchestrates the job and stops when it is delivered or needs you.
@@ -225,6 +229,8 @@ file the job wrote, including the exact brief each agent got.
   `surfaces` (surface → extra lenses) in `engine/defaults.json`. Override any
   part in a profile's `config.json`; `null` removes a key.
 - **Models** for intake, spec writer and approver: `models` (default `opus`).
+- **Base branch sync**: `pull_base` (default `true`) fast-forwards `base_branch`
+  from `origin` before each job. Set it to `false` to turn that off.
 - **Rounds**: `max_rounds` (default 3) build → gate → review cycles per job.
 - **Protected files**: `spec_may_unlock_protected` (default `true`) lets the
   spec unlock the protected tests a change must update. Set it to `false` to
@@ -264,7 +270,7 @@ the full path to an approved branch, routing and context isolation, the gate
 running out, planted or stale verdicts, intake questions and rejections, both
 delivery methods (handoff with rework after a PR review; local merge with all
 three strategies, a moved or dirty base branch and conflicts), unreviewed
-commits after approval, and person-only commands.
+commits after approval, updating the base branch from origin, and person-only commands.
 
 ## License
 

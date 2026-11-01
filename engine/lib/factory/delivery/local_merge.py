@@ -17,28 +17,10 @@ Nothing is pushed.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional
-
 from .. import gate as gates
 from ..jobs import Job, remove_worktree
-from ..util import git, run
+from ..util import checkout_of, git, is_ancestor, run
 from .base import Blocked, Method, Option, checked_head, passed_commits
-
-
-def checkout_of(repo: Path, branch: str) -> Optional[Path]:
-    """The worktree (usually the main checkout) that has `branch` checked out, if any."""
-    current = None
-    for line in git(repo, "worktree", "list", "--porcelain").splitlines():
-        if line.startswith("worktree "):
-            current = Path(line[len("worktree "):])
-        elif line == f"branch refs/heads/{branch}" and current is not None:
-            return current
-    return None
-
-
-def is_ancestor(cwd: Path, a: str, b: str) -> bool:
-    return run(["git", "merge-base", "--is-ancestor", a, b], cwd=cwd, check=False).returncode == 0
 
 
 class LocalMerge(Method):

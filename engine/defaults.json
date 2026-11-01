@@ -1,6 +1,7 @@
 {
   "_readme": "Engine defaults. A profile's config.json overrides any key here; objects merge key by key, and null removes a key (e.g. a surface).",
   "base_branch": "main",
+  "pull_base": true,
   "delivery": { "method": "handoff" },
   "branch_prefix": "factory/",
   "max_rounds": 3,

@@ -83,6 +83,7 @@ class Sandbox(unittest.TestCase):
             "repo": {"path": str(self.repo), "remote": "https://github.com/acme/app"},
             "base_branch": "main",
             "delivery": self.delivery,
+            "pull_base": False,
             "max_rounds": self.max_rounds,
             "protected_paths": ["tests/test_calc.py"],
             "ports": {"base": 5400},
@@ -721,6 +722,102 @@ class LocalMerge(DeliveryCases, Sandbox):
         self.assertIn("conflicts", result)
         self.assertEqual(sh(job.worktree, "git", "status", "--porcelain"), "")
 
+
+
+class PullBase(Sandbox):
+    def setUp(self):
+        super().setUp()
+        self.origin = self.tmp / "origin.git"
+        sh(self.tmp, "git", "clone", "-q", "--bare", str(self.repo), str(self.origin))
+        sh(self.repo, "git", "remote", "set-url", "origin", str(self.origin))
+        sh(self.repo, "git", "fetch", "-q", "origin")
+        self.write_config(pull_base=True)
+
+    def push_from_other(self, name="README.md", text="hi\n"):
+        other = self.tmp / "other"
+        if not other.exists():
+            sh(self.tmp, "git", "clone", "-q", str(self.origin), str(other))
+            sh(other, "git", "config", "user.name", "Other")
+            sh(other, "git", "config", "user.email", "other@example.com")
+        (other / name).write_text(text)
+        sh(other, "git", "add", name)
+        sh(other, "git", "commit", "-q", "-m", f"change {name}")
+        sh(other, "git", "push", "-q", "origin", "main")
+        return sh(other, "git", "rev-parse", "HEAD")
+
+    def commit_local(self, name="local.txt"):
+        (self.repo / name).write_text("local\n")
+        sh(self.repo, "git", "add", name)
+        sh(self.repo, "git", "commit", "-q", "-m", f"local {name}")
+
+    def test_behind_base_is_fast_forwarded(self):
+        old = sh(self.repo, "git", "rev-parse", "main")
+        tip = self.push_from_other()
+        job = self.new_job()
+        self.assertEqual(sh(self.repo, "git", "rev-parse", "main"), tip)
+        self.assertEqual(job.data["base_commit"], tip)
+        self.assertEqual(sh(job.worktree, "git", "rev-parse", "HEAD"), tip)
+        self.assertIn(f"base main fast-forwarded {old[:12]} -> {tip[:12]} from origin", job.file("events.log").read_text())
+
+    def test_base_not_checked_out_uses_update_ref(self):
+        sh(self.repo, "git", "checkout", "-q", "--detach")
+        tip = self.push_from_other()
+        job = self.new_job()
+        self.assertEqual(sh(self.repo, "git", "rev-parse", "refs/heads/main"), tip)
+        self.assertEqual(job.data["base_commit"], tip)
+
+    def test_ahead_or_diverged_base_is_left_alone(self):
+        self.commit_local()
+        ahead = sh(self.repo, "git", "rev-parse", "main")
+        job = self.new_job()
+        self.assertEqual(sh(self.repo, "git", "rev-parse", "main"), ahead)
+        self.assertEqual(job.data["base_commit"], ahead)
+        self.assertIn("is ahead of origin/main", job.file("events.log").read_text())
+
+    def test_diverged_base_is_left_alone(self):
+        self.commit_local()
+        self.push_from_other()
+        local = sh(self.repo, "git", "rev-parse", "main")
+        job = self.new_job()
+        self.assertEqual(sh(self.repo, "git", "rev-parse", "main"), local)
+        self.assertEqual(job.data["base_commit"], local)
+        self.assertIn("have diverged", job.file("events.log").read_text())
+
+    def test_no_origin_is_skipped(self):
+        sh(self.repo, "git", "remote", "remove", "origin")
+        local = sh(self.repo, "git", "rev-parse", "main")
+        job = self.new_job()
+        self.assertEqual(job.data["base_commit"], local)
+        self.assertIn("no origin remote", job.file("events.log").read_text())
+
+    def test_unreachable_origin_is_skipped(self):
+        sh(self.repo, "git", "remote", "set-url", "origin", str(self.tmp / "missing.git"))
+        local = sh(self.repo, "git", "rev-parse", "main")
+        job = self.new_job()
+        self.assertEqual(job.data["base_commit"], local)
+        self.assertIn("fetch failed", job.file("events.log").read_text())
+
+    def test_pull_base_false_is_skipped(self):
+        self.write_config(pull_base=False)
+        local = sh(self.repo, "git", "rev-parse", "main")
+        self.push_from_other()
+        job = self.new_job()
+        self.assertEqual(sh(self.repo, "git", "rev-parse", "main"), local)
+        self.assertNotIn("from origin", job.file("events.log").read_text())
+
+    def test_dirty_checkout_blocking_fast_forward_still_creates_the_job(self):
+        local = sh(self.repo, "git", "rev-parse", "main")
+        self.push_from_other("calc.py", "def add(a, b):\n    return 0\n")
+        (self.repo / "calc.py").write_text("def add(a, b):\n    return a + b  # edited\n")
+        job = self.new_job()
+        self.assertEqual(job.data["base_commit"], local)
+        self.assertIn("# edited", (self.repo / "calc.py").read_text())
+        self.assertIn("fast-forward refused", job.file("events.log").read_text())
+
+    def test_pull_base_must_be_a_bool(self):
+        self.write_config(pull_base="yes")
+        errors = profiles.validate(self.profile)
+        self.assertTrue(any("pull_base must be true or false" in e for e in errors), errors)
 
 
 class Queue(Sandbox):

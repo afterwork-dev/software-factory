@@ -45,6 +45,9 @@ that lists the candidates. The template is never picked.
 `factory run` creates the job before Claude Code starts:
 
 - `projects/<name>/jobs/<NNN-slug>/` with `job.json` and `request.md`;
+- the base branch fast-forwarded from `origin` (best effort: `--ff-only` in the
+  checkout that has it, otherwise an atomic `update-ref`; opt out with
+  `pull_base`);
 - branch `factory/<NNN-slug>` from the base branch's current commit;
 - a worktree at `projects/<name>/worktrees/<NNN-slug>/` (configurable with
   `worktree_root`), outside the project's source tree;
