@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .. import gate as gates
 from ..jobs import Job
-from ..util import git
+from ..util import git, section
 
 
 class Blocked(Exception):
@@ -76,3 +76,10 @@ def checked_head(job: Job) -> str:
         raise Blocked("the branch has commits that no gate passed and no reviewer saw; "
                       f"rework it, or accept it as it is with `bin/factory approve {job.id}`")
     return head
+
+
+def reviewer_notes(job: Job) -> str:
+    """The approver's `## For the reviewer` notes from decision.md, or "" when there are none."""
+    decision = job.file("decision.md")
+    notes = section(decision.read_text(), "For the reviewer") if decision.is_file() else ""
+    return "" if notes.lower().rstrip(".") in ("none", "nothing") else notes
