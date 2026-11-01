@@ -18,8 +18,9 @@ request (argument or backlog.md)
              └ ESCALATE → waits for you
 ```
 
-One job at a time, one Claude Code session per job. It never pushes, and it
-needs no GitHub issues or pull requests to run.
+One job at a time, one Claude Code session per job. It never pushes unless a
+project opts in to the `github-pr` delivery, and it needs no GitHub issues or
+pull requests to run.
 
 **The factory lives here, not in your projects.** Your project repos get no
 `.claude/`, no agent files, no factory folder, nothing to commit. Everything,
@@ -43,7 +44,7 @@ engine/                     generic, shared by every project; a Claude Code plug
   lenses/                     review checklists: code, security, ux, ui
   bin/factory                 the CLI (on the Bash PATH inside factory sessions)
   lib/factory/                profiles, jobs, step (state machine), gate, route, brief, verify, dashboard
-  lib/factory/delivery/       what happens after APPROVE: handoff (default), local-merge (opt-in)
+  lib/factory/delivery/       what happens after APPROVE: handoff (default), local-merge (opt-in), github-pr (opt-in)
   defaults.json               routing table, models, rounds, timeouts
   settings.json               permission rules for factory sessions
   dashboard/index.html        the job board
@@ -148,9 +149,9 @@ project would settle:
   It escalates only what no agent should decide: business choices with no
   sensible default, contradictory requirements, missing credentials or access,
   and what your profile's `context/approver.md` says to always escalate.
-- **With handoff, a person reviews the PR anyway.** So changes in sensitive
-  areas (sign-in, permissions, dependencies, …) and checks the factory couldn't
-  run are passed on as notes for that reviewer, not as stops. With local-merge,
+- **With handoff or github-pr, a person reviews the PR anyway.** So changes in
+  sensitive areas (sign-in, permissions, dependencies, …) and checks the factory
+  couldn't run are passed on as notes for that reviewer, not as stops. With local-merge,
   nobody looks afterwards, so the approver escalates sensitive areas.
 
 ## When a job needs you
@@ -169,7 +170,8 @@ terminal in the factory folder:
 
 After `reply`, `rework` or `retry`, continue with `bin/factory run --job <job>`.
 `approve`, `abandon` and `trust` ask for confirmation and refuse to run without
-a terminal, so no agent can run them. Nothing is ever pushed.
+a terminal, so no agent can run them. Nothing is ever pushed unless the
+profile uses the `github-pr` delivery.
 
 ## When a job is delivered
 
@@ -206,8 +208,29 @@ allow landing changes directly.
   history. If your main checkout has uncommitted changes, the job waits and
   `bin/factory retry <job>` finishes it.
 
-More methods (a GitHub pull request opened by the factory, a script of your
-own) fit the same slot; `DESIGN.md` explains how to add one.
+- **`github-pr`** (opt-in): on the approver's APPROVE, pushes the branch and
+  opens a GitHub pull request into the base branch; your project's own review
+  and branch protection decide the merge. It needs the GitHub CLI `gh`
+  installed and signed in (`gh auth login`). Switch it on with:
+
+  ```json
+  "delivery": { "method": "github-pr", "remote": "origin", "draft": false }
+  ```
+
+  `remote` is the git remote to push to (default `origin`); `draft: true`
+  opens the pull request as a draft. The pull request is titled with the job
+  title, and its body carries the approver's `## Why`, `## Acceptance criteria`
+  and `## For the reviewer`. The push is never forced. A job you accept with
+  `bin/factory approve` after an escalation is not pushed: it is handed off as
+  with `handoff`, and the session prints the `git push` and `gh pr create`
+  commands for you to run. If `gh` is missing or signed out, the remote doesn't
+  exist, the push is rejected or `gh pr create` fails, the job waits with the
+  reason and `bin/factory retry <job>` runs the delivery again. After
+  `bin/factory rework <job> "<what to change>"`, the next approval pushes the
+  new commits to the same branch and updates the same pull request.
+
+Other methods (a script of your own, another forge) fit the same slot;
+`DESIGN.md` explains how to add one.
 
 Other commands: `bin/factory status`, `bin/factory queue --project myapp`,
 `bin/factory step <job>` (what the orchestrator would do next),
@@ -267,9 +290,11 @@ python3 -m unittest discover -s tests -v
 They build throwaway repos, play the agents by writing their files, and cover
 the full path to an approved branch, routing and context isolation, the gate
 (protected paths, dirty worktrees, failing checks, changed profiles), rounds
-running out, planted or stale verdicts, intake questions and rejections, both
-delivery methods (handoff with rework after a PR review; local merge with all
-three strategies, a moved or dirty base branch and conflicts), unreviewed
+running out, planted or stale verdicts, intake questions and rejections, every
+delivery method (handoff with rework after a PR review; local merge with all
+three strategies, a moved or dirty base branch and conflicts; github-pr against
+a local bare remote and a fake `gh`, covering the approver and person-accepted
+paths, drafts, rework reusing the pull request, and each failure with retry), unreviewed
 commits after approval, updating the base branch from origin, and person-only commands.
 
 ## License

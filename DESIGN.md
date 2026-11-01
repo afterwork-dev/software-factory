@@ -1,7 +1,7 @@
 # Design
 
 How the factory works and why. The source is small: one CLI, five agents,
-four lenses, five skills, two delivery methods.
+four lenses, five skills, three delivery methods.
 
 ## Principles
 
@@ -134,9 +134,10 @@ decide:
 - the approver answers APPROVE, CHANGES (fixable by an agent, so another
   round) or ESCALATE (prices, legal text, data access, contradictory
   requirements, missing credentials, the profile's `context/approver.md`).
-  What counts as sensitive depends on delivery: under handoff a person reviews
-  the PR, so sensitive areas and unverifiable checks become `## For the
-  reviewer` notes that the handoff prints. Under local-merge they are escalated.
+  What counts as sensitive depends on delivery: under handoff and github-pr a
+  person reviews the PR, so sensitive areas and unverifiable checks become
+  `## For the reviewer` notes that the handoff prints or the pull request
+  carries. Under local-merge they are escalated.
 
 ## Routing
 
@@ -239,6 +240,7 @@ sit next to it:
 ```json
 "delivery": { "method": "handoff", "next_steps": "gh pr create --head {branch} --base {base} --fill" }
 "delivery": { "method": "local-merge", "strategy": "squash" }
+"delivery": { "method": "github-pr", "remote": "origin", "draft": false }
 ```
 
 Every method follows one contract (`engine/lib/factory/delivery/base.py`):
@@ -285,20 +287,45 @@ For projects that allow landing on the base branch without a pull request:
 Nothing is pushed. If your main checkout is busy, the job waits with `retry`;
 it is already approved and gated.
 
+### github-pr (opt-in)
+
+For projects where every change goes through a GitHub pull request. Options:
+`remote` (default `origin`) and `draft` (default `false`). APPROVE means a
+pull request, and the project's own review and branch protection decide the
+merge, so the approver treats sensitive areas as handoff does. `deliver()`
+calls `checked_head()`, then:
+
+- **a job a person accepted** with `factory approve` after an escalation is
+  not pushed: the factory flagged it for a person, so it doesn't publish it.
+  It is handed off as with handoff, and `next_steps` holds the `git push -u`
+  and `gh pr create --fill` commands, quoted, for the person to run;
+- **a job the approver approved** goes through preflight checks first: `gh`
+  on `PATH`, `gh auth status` exiting 0, and `remote` being exactly one of the
+  names `git remote` prints. Then `git push -u <remote> <branch>`, never
+  forced, so a remote branch holding commits the job doesn't have rejects the
+  push. If the branch already has an open pull request (`gh pr view`, after a
+  rework), the push has updated it and its URL is reused; otherwise
+  `gh pr create` opens one into the base branch, titled with the job title,
+  with a plain-text body built from `decision.md` (`## Why`, `## Acceptance
+  criteria`, `## For the reviewer`). Only then is the worktree removed; the
+  branch stays, so the method is reopenable.
+
+Job-derived text (title, body, branch) reaches `git` and `gh` as a list of
+arguments with no shell, and values go in `--flag=value` form so text starting
+with `-` can't be read as a flag. Every command runs with
+`GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1`, so nothing waits for input
+in an unattended session; `gh` runs in the profile's repo and resolves the
+GitHub repository from it. Each failure raises `Blocked` with the trimmed tool
+output and leaves the worktree as it was, so `factory retry` runs the delivery
+again.
+
 ### Adding a method
 
 Write a `Method` subclass in `engine/lib/factory/delivery/`, add it to
-`METHODS` in `__init__.py`, and add tests that play it through `deliver()`. A
-GitHub pull-request method would look like this:
-
-- options such as `remote` (default `origin`), `draft` (bool), `reviewers`, and
-  `auto_merge` with a merge `strategy` for repos that allow GitHub auto-merge;
-- `deliver()`: call `checked_head()`, push the branch with `git push`, open
-  the PR with `gh pr create` using the spec's title and a body built from
-  `decision.md`, and return the PR URL as `next_steps`. Set `reopenable = True`
-  so review feedback can go through `rework` and a later push updates the PR;
-- `approve_meaning()`: "APPROVE opens a pull request; the project's own review
-  and branch protection decide the merge".
+`METHODS` in `__init__.py`, and add tests that play it through `deliver()`.
+`handoff.py` is the smallest example; `github_pr.py` is the example of a
+method that pushes: preflight checks that raise `Blocked`, a push that is never
+forced, and the worktree removed only once delivery succeeded.
 
 A method that pushes or merges must only ever be switched on by a profile,
 never by default, and must keep the `checked_head()` rule.
@@ -315,8 +342,8 @@ approver still decide, so the orchestrator may run them.
 ## What the factory does not do
 
 - Run jobs in parallel: one job per session, one active job per profile.
-- Read GitHub issues, push, open pull requests, or deploy. Pushing and opening
-  pull requests are what a future delivery method would add, per profile.
+- Push or open pull requests unless a profile opts in to the `github-pr`
+  delivery. It reads no GitHub issues and deploys nothing.
 - Track cost. Claude Code's transcripts hold the numbers if you want them.
 - Override whole agent prompts per profile. Profiles add notes and lenses. The
   output contracts (`VERDICT:`, `STATUS:`, …) stay the engine's, because

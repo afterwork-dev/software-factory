@@ -11,8 +11,8 @@ from __future__ import annotations
 import shlex
 
 from ..jobs import Job, remove_worktree
-from ..util import run, section
-from .base import Method, Option, checked_head
+from ..util import run
+from .base import Method, Option, checked_head, reviewer_notes
 
 
 class Handoff(Method):
@@ -44,9 +44,8 @@ class Handoff(Method):
                      f"  git -C {shlex.quote(str(repo))} push -u origin {job.branch}")
         else:
             steps = f"Merge or push {job.branch} the way this project expects."
-        decision = job.file("decision.md")
-        notes = section(decision.read_text(), "For the reviewer") if decision.is_file() else ""
-        if notes and notes.lower().rstrip(".") not in ("none", "nothing"):
+        notes = reviewer_notes(job)
+        if notes:
             steps += f"\n\nThe approver asks whoever reviews it to look at:\n{notes}"
         return {
             "method": self.name,
