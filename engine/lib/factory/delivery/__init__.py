@@ -7,8 +7,9 @@ method's options next to it, for example
 
     "delivery": { "method": "handoff" }
     "delivery": { "method": "local-merge", "strategy": "squash" }
+    "delivery": { "method": "github-pr", "remote": "origin", "draft": false }
 
-To add a method (a GitHub pull request, a script of your own), write a
+To add a method (a script of your own, another forge), write a
 `Method` subclass in this package and add it to METHODS. base.py has the
 contract.
 """
@@ -20,10 +21,11 @@ from typing import List, Tuple
 from ..jobs import Job
 from ..util import FactoryError, locked, now
 from .base import Blocked, Method
+from .github_pr import GitHubPR
 from .handoff import Handoff
 from .local_merge import LocalMerge
 
-METHODS = {m.name: m for m in (Handoff(), LocalMerge())}
+METHODS = {m.name: m for m in (Handoff(), LocalMerge(), GitHubPR())}
 DEFAULT = "handoff"
 
 
