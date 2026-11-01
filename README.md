@@ -208,7 +208,7 @@ allow landing changes directly.
   history. If your main checkout has uncommitted changes, the job waits and
   `bin/factory retry <job>` finishes it.
 
-- **`github-pr`** (opt-in): on the approver's APPROVE, pushes the branch and
+- **`github-pr`** (opt-in): when a job is approved, pushes the branch and
   opens a GitHub pull request into the base branch; your project's own review
   and branch protection decide the merge. It needs the GitHub CLI `gh`
   installed and signed in (`gh auth login`). Switch it on with:
@@ -221,9 +221,10 @@ allow landing changes directly.
   opens the pull request as a draft. The pull request is titled with the job
   title, and its body carries the approver's `## Why`, `## Acceptance criteria`
   and `## For the reviewer`. The push is never forced. A job you accept with
-  `bin/factory approve` after an escalation is not pushed: it is handed off as
-  with `handoff`, and the session prints the `git push` and `gh pr create`
-  commands for you to run. If `gh` is missing or signed out, the remote doesn't
+  `bin/factory approve` (after an escalation or any other stop) is pushed and
+  gets a pull request the same way; its body says a person accepted it as it
+  is, and the confirmation prompt says so before you confirm. If `gh` is
+  missing or signed out, the remote doesn't
   exist, the push is rejected or `gh pr create` fails, the job waits with the
   reason and `bin/factory retry <job>` runs the delivery again. After
   `bin/factory rework <job> "<what to change>"`, the next approval pushes the
