@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,20 +138,71 @@ class GitHubPR(DeliveryCases, Sandbox):
         deliver(job)
         self.assertIn("--draft", self.pr_creates()[0])
 
-    def test_person_accepted_job_is_handed_off_without_pushing(self):
+    def test_person_accepted_job_is_pushed_and_gets_a_pull_request(self):
+        job = self.new_job()
+        self.to_review(job)
+        self.review(job, "code")
+        step(job)
+        self.write(job.file("decision.md"), "ESCALATE\n\n## Why\nThe pricing rule is a business call.\n\n"
+                                            "## For the human\nDecide the pricing rule.\n")
+        step(job)
+        self.assertEqual(job.stage, "needs-human")
+        head = sh(job.worktree, "git", "rev-parse", "HEAD")
+        with mock.patch("factory.human.require_person") as require_person:
+            self.assertTrue(human.approve(job).startswith("DELIVERED"))
+        action = require_person.call_args[0][0]
+        self.assertIn("push", action)
+        self.assertIn("pull request", action)
+        self.assertNotIn("without pushing", action)
+        self.assertEqual(self.remote_ref(job.branch), head)
+        creates = self.pr_creates()
+        self.assertEqual(len(creates), 1)
+        body = next(a for a in creates[0] if a.startswith("--body="))
+        self.assertIn("A person accepted it as it is with `bin/factory approve`", body)
+        self.assertIn("The approver's last decision was ESCALATE.", body)
+        self.assertIn("## Why\nThe pricing rule is a business call.", body)
+        self.assertNotIn("after its gate, reviews and approval passed", body)
+        self.assertNotIn("For the human", body)
+        job = self.reload(job)
+        record = job.data["delivery"]
+        self.assertEqual((record["pushed"], record["pr_url"]), (True, PR_URL))
+        self.assertTrue(record["summary"].startswith("accepted by a person; pushed"), record["summary"])
+        self.assertEqual(job.stage, "delivered")
+        self.assertFalse(job.worktree.exists())
+        self.assertEqual(sh(self.repo, "git", "rev-parse", job.branch), head)
+
+    def test_person_accepted_job_without_decision_gets_a_pull_request(self):
+        job = self.approved()
+        job.file("decision.md").unlink()
+        job.data["approved_by_person"] = True
+        job.save()
+        head = sh(job.worktree, "git", "rev-parse", "HEAD")
+        self.assertTrue(deliver(job).startswith("DELIVERED"))
+        self.assertEqual(self.remote_ref(job.branch), head)
+        creates = self.pr_creates()
+        self.assertEqual(len(creates), 1)
+        body = next(a for a in creates[0] if a.startswith("--body="))
+        self.assertIn("A person accepted it as it is with `bin/factory approve`", body)
+        self.assertNotIn("The approver's last decision", body)
+        self.assertNotIn("## Why", body)
+        self.assertEqual(self.reload(job).stage, "delivered")
+
+    def test_person_accepted_failed_pr_create_parks_then_retry_delivers(self):
         job = self.approved()
         job.data["approved_by_person"] = True
         job.save()
-        self.assertTrue(deliver(job).startswith("DELIVERED"))
-        self.assertIsNone(self.remote_ref(job.branch))
-        self.assertEqual(self.gh_calls(), [])
+        (self.gh_state / "create-fails").write_text("")
+        result = deliver(job)
+        self.assertIn("`gh pr create` failed", result)
+        job = self.assert_parked(job, result)
+        pushed = self.remote_ref(job.branch)
+        self.assertIsNotNone(pushed)
+        (self.gh_state / "create-fails").unlink()
+        self.assertTrue(human.retry(job).startswith("DELIVERED"))
         job = self.reload(job)
-        record = job.data["delivery"]
-        self.assertFalse(record["pushed"])
-        self.assertIn(f"push -u origin {job.branch}", record["next_steps"])
-        self.assertIn(f"gh pr create --head {job.branch} --base main", record["next_steps"])
-        self.assertFalse(job.worktree.exists())
-        self.assertTrue(sh(self.repo, "git", "branch", "--list", job.branch))
+        self.assertEqual((job.stage, job.data["delivery"]["pr_url"]), ("delivered", PR_URL))
+        self.assertTrue(job.data["delivery"]["summary"].startswith("accepted by a person; pushed"))
+        self.assertEqual(self.remote_ref(job.branch), pushed)
 
     def test_rework_pushes_again_and_reuses_the_pull_request(self):
         job = self.approved()
