@@ -1,9 +1,9 @@
 """github-pr: push the approved branch and open a GitHub pull request. Opt-in.
 
-For projects where every change goes through a pull request anyway. Only a
-job the approver approved is pushed; a job a person accepts after an
-escalation (`bin/factory approve`) is handed off like `handoff`, with the
-commands to push it and open the pull request.
+For projects where every change goes through a pull request anyway. Every
+job the approver approves, and every job a person accepts with
+`bin/factory approve`, is pushed and gets a pull request; the body says which
+of the two accepted it.
 
 1. Check that `gh` is installed and signed in, and that `remote` is one of
    the repo's remotes.
@@ -23,18 +23,17 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import shutil
 
 from ..jobs import Job, remove_worktree
-from ..util import run, section
+from ..util import first_line, run, section
 from .base import Blocked, Method, Option, checked_head, reviewer_notes
 
 
 class GitHubPR(Method):
     name = "github-pr"
-    about = ("push the branch and open a GitHub pull request when the approver approves; a job a person accepts "
-             "after an escalation is handed off without pushing")
+    about = ("push the branch and open a GitHub pull request, both when the approver approves and when a person "
+             "accepts the job with `bin/factory approve`")
     reopenable = True
     options = {
         "remote": Option("origin", kind=str, about="the git remote to push the branch to"),
@@ -56,21 +55,6 @@ class GitHubPR(Method):
         record = {"method": self.name, "branch": branch, "commit": head, "base_branch": base, "remote": remote}
         notes = reviewer_notes(job)
         notes_text = f"\n\nThe approver asks whoever reviews it to look at:\n{notes}" if notes else ""
-
-        if job.data.get("approved_by_person"):
-            remove_worktree(job, keep_branch=True)
-            q = shlex.quote
-            create = f"cd {q(str(repo))} && gh pr create --head {q(branch)} --base {q(base)} --fill"
-            steps = (f"Push it and open a pull request into {base}:\n"
-                     f"  git -C {q(str(repo))} push -u {q(remote)} {q(branch)}\n"
-                     f"  {create}{' --draft' if opts['draft'] else ''}")
-            record.update(
-                pushed=False,
-                summary=(f"accepted by a person and handed off as branch {branch} at {head[:12]}. Nothing was "
-                         "pushed; github-pr opens pull requests only for jobs the approver approves."),
-                next_steps=steps + notes_text,
-            )
-            return record
 
         env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GH_PROMPT_DISABLED="1")
 
@@ -117,18 +101,26 @@ class GitHubPR(Method):
             url = lines[-1]
 
         remove_worktree(job, keep_branch=True)
+        who = "accepted by a person" if job.data.get("approved_by_person") else "approved"
         record.update(
             pushed=True,
             pr_url=url,
-            summary=(f"approved; pushed {branch} at {head[:12]} to {remote} and "
+            summary=(f"{who}; pushed {branch} at {head[:12]} to {remote} and "
                      f"{'updated' if reused else 'opened'} pull request {url}"),
             next_steps=f"Review and merge the pull request: {url}" + notes_text,
         )
         return record
 
     def body(self, job: Job) -> str:
-        parts = [f"Opened by software-factory job {job.id} after its gate, reviews and approval passed."]
         decision = job.file("decision.md")
+        if job.data.get("approved_by_person"):
+            parts = [f"Opened by software-factory job {job.id}. A person accepted it as it is with `bin/factory "
+                     "approve` after the factory stopped it for a person, so it may include work that its gate, "
+                     "reviews or approval did not pass."]
+            if decision.is_file():
+                parts.append(f"The approver's last decision was {first_line(decision)}.")
+        else:
+            parts = [f"Opened by software-factory job {job.id} after its gate, reviews and approval passed."]
         text = decision.read_text() if decision.is_file() else ""
         for heading in ("Why", "Acceptance criteria", "For the reviewer"):
             content = reviewer_notes(job) if heading == "For the reviewer" else section(text, heading)

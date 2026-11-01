@@ -293,22 +293,25 @@ For projects where every change goes through a GitHub pull request. Options:
 `remote` (default `origin`) and `draft` (default `false`). APPROVE means a
 pull request, and the project's own review and branch protection decide the
 merge, so the approver treats sensitive areas as handoff does. `deliver()`
-calls `checked_head()`, then:
+calls `checked_head()`; then a job the approver approved and a job a person
+accepted with `factory approve` go through the same steps. Preflight checks
+first: `gh` on `PATH`, `gh auth status` exiting 0, and `remote` being exactly
+one of the names `git remote` prints. Then `git push -u <remote> <branch>`, never forced, so a
+remote branch holding commits the job doesn't have rejects the push. If the
+branch already has an open pull request (`gh pr view`, after a rework), the
+push has updated it and its URL is reused; otherwise `gh pr create` opens one
+into the base branch, titled with the job title, with a plain-text body built
+from `decision.md` (`## Why`, `## Acceptance criteria`, `## For the
+reviewer`). Only then is the worktree removed; the branch stays, so the method
+is reopenable.
 
-- **a job a person accepted** with `factory approve` after an escalation is
-  not pushed: the factory flagged it for a person, so it doesn't publish it.
-  It is handed off as with handoff, and `next_steps` holds the `git push -u`
-  and `gh pr create --fill` commands, quoted, for the person to run;
-- **a job the approver approved** goes through preflight checks first: `gh`
-  on `PATH`, `gh auth status` exiting 0, and `remote` being exactly one of the
-  names `git remote` prints. Then `git push -u <remote> <branch>`, never
-  forced, so a remote branch holding commits the job doesn't have rejects the
-  push. If the branch already has an open pull request (`gh pr view`, after a
-  rework), the push has updated it and its URL is reused; otherwise
-  `gh pr create` opens one into the base branch, titled with the job title,
-  with a plain-text body built from `decision.md` (`## Why`, `## Acceptance
-  criteria`, `## For the reviewer`). Only then is the worktree removed; the
-  branch stays, so the method is reopenable.
+A person-accepted job's push is authorized by the person's confirmation in
+`factory approve`, which an agent can't run; `about` is part of that prompt,
+so it says that accepting pushes and opens a pull request. Its pull request
+body says a person accepted it as it is and that it may include work its
+gate, reviews or approval did not pass, and names the approver's last
+decision when there is one; its summary starts with `accepted by a person`
+instead of `approved`.
 
 Job-derived text (title, body, branch) reaches `git` and `gh` as a list of
 arguments with no shell, and values go in `--flag=value` form so text starting
