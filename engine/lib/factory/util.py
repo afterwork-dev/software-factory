@@ -49,6 +49,21 @@ def git(cwd, *args, check=True) -> str:
     return run(["git", *args], cwd=cwd, check=check).stdout.rstrip("\n")
 
 
+def checkout_of(repo: Path, branch: str) -> Optional[Path]:
+    """The worktree (usually the main checkout) that has `branch` checked out, if any."""
+    current = None
+    for line in git(repo, "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("worktree "):
+            current = Path(line[len("worktree "):])
+        elif line == f"branch refs/heads/{branch}" and current is not None:
+            return current
+    return None
+
+
+def is_ancestor(cwd: Path, a: str, b: str) -> bool:
+    return run(["git", "merge-base", "--is-ancestor", a, b], cwd=cwd, check=False).returncode == 0
+
+
 def read_json(path: Path):
     try:
         return json.loads(Path(path).read_text())

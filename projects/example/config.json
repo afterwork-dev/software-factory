@@ -11,6 +11,9 @@
   "_base_branch": "Jobs branch from it, and reviews and the gate compare against it.",
   "base_branch": "main",
 
+  "_pull_base": "Before each new job the factory fetches base_branch from origin and fast-forwards it if it is strictly behind. It never merges, rebases or pushes; if it can't (offline, no origin, ahead, diverged, a dirty checkout in the way), the job starts from the local branch and the reason goes to the job's events.log. false turns this off.",
+  "pull_base": true,
+
   "_delivery": "What happens to an approved job. handoff (default): it ends as an approved branch in your repo; you push it and open a pull request, the project's usual way. next_steps, if set, replaces the suggested commands ({branch}, {base}, {repo}, {job} are filled in). local-merge: merge into base_branch locally with no person looking, only where that is allowed; strategy is merge, squash or rebase. Nothing is ever pushed.",
   "delivery": {
     "method": "handoff",

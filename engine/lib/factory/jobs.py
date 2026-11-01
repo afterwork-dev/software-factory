@@ -12,18 +12,20 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from . import profile as profiles
 from .profile import Profile
-from .util import FactoryError, git, is_relative_to, locked, now, read_json, run, sha256, slugify, write_json, write_text
+from .util import FactoryError, checkout_of, git, is_ancestor, is_relative_to, locked, now, read_json, run, sha256, slugify, write_json, write_text
 
 ACTIVE = ("intake", "spec", "build", "gate", "review", "approve", "delivering")
 PARKED = ("needs-info", "needs-human")
 CLOSED = ("delivered", "rejected", "abandoned")
 STAGES = ACTIVE + PARKED + CLOSED
 JOB_RE = re.compile(r"^(\d{3})-[a-z0-9-]+$")
+FETCH_TIMEOUT_S = 60
 
 
 class Job:
@@ -240,6 +242,51 @@ def create_next(profile: Profile) -> Job:
     return job
 
 
+def sync_base(profile: Profile) -> str:
+    """Fast-forward the local base branch from origin. Best effort: never raises, returns one line."""
+    base = profile.config["base_branch"]
+    repo = profile.repo_path
+    old = profiles.head_of(profile)
+
+    def skipped(reason: str) -> str:
+        return f"base {base} not updated from origin: {reason}; starting from local {old[:12]}"
+
+    if run(["git", "remote", "get-url", "origin"], cwd=repo, check=False).returncode != 0:
+        return skipped("no origin remote")
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        res = run(["git", "fetch", "--quiet", "origin", base], cwd=repo, check=False,
+                  timeout=FETCH_TIMEOUT_S, env=env)
+        detail = (res.stderr.strip().splitlines() or ["unknown error"])[0]
+        failed = res.returncode != 0
+    except subprocess.TimeoutExpired:
+        detail, failed = "timed out", True
+    if not failed:
+        got = run(["git", "rev-parse", "--verify", f"refs/remotes/origin/{base}^{{commit}}"], cwd=repo, check=False)
+        failed, detail = got.returncode != 0, "origin has no such branch"
+    if failed:
+        return skipped(f"fetch failed ({detail})")
+    new = got.stdout.strip()
+    if new == old:
+        return f"base {base} is up to date with origin at {old[:12]}"
+    if not is_ancestor(repo, old, new):
+        if is_ancestor(repo, new, old):
+            return skipped(f"local {base} is ahead of origin/{base}")
+        return skipped(f"local {base} and origin/{base} have diverged")
+    checkout = checkout_of(repo, base)
+    if checkout is not None:
+        res = run(["git", "merge", "--ff-only", "--quiet", new], cwd=checkout, check=False)
+        if res.returncode != 0:
+            first = ((res.stderr or res.stdout).strip().splitlines() or ["unknown error"])[0]
+            return skipped(f"fast-forward refused at {checkout}: {first}")
+    else:
+        res = run(["git", "update-ref", "-m", f"factory: fast-forward {base} from origin",
+                   f"refs/heads/{base}", new, old], cwd=repo, check=False)
+        if res.returncode != 0:
+            return skipped(f"{base} moved during the update")
+    return f"base {base} fast-forwarded {old[:12]} -> {new[:12]} from origin"
+
+
 def _create_locked(profile: Profile, title: str, body: str, source: str) -> Job:
     errors = profiles.validate(profile)
     if errors:
@@ -257,6 +304,10 @@ def _create_locked(profile: Profile, title: str, body: str, source: str) -> Job:
     base = cfg["base_branch"]
     if not profiles.base_branch_exists(profile):
         raise FactoryError(f"base branch {base!r} doesn't exist in {repo}")
+    sync_line = None
+    if cfg["pull_base"]:
+        sync_line = sync_base(profile)
+        print(f"factory: {sync_line}", file=sys.stderr)
     base_commit = profiles.head_of(profile)
 
     numbers = [int(j.id[:3]) for j in jobs_of(profile)]
@@ -304,6 +355,8 @@ def _create_locked(profile: Profile, title: str, body: str, source: str) -> Job:
         "ended": None,
     })
     job.save()
+    if sync_line:
+        job.event(sync_line)
     job.event(f"created from {source}; branch {branch} at {base_commit[:12]}")
     return job
 
